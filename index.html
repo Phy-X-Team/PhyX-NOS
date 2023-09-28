@@ -1,11 +1,8 @@
 <!DOCTYPE html><link rel="icon" href="data:;base64,=">
 <script type="module">
-    let DeviceMemory, MemoryBuffer, MemoryWriter = null;
-
-    let clearDocumentContent = () => {
-        document.body.remove()
-        document.head.remove()
-    } 
+    let global = self,
+        DeviceMemory, MemoryBuffer, MemoryWriter,
+        HTMLOperator;
 
     let createSharedMemory = ( initial = 10, maximum = 65e3, shared = true ) => {
         DeviceMemory = new WebAssembly.Memory({ initial, maximum, shared });
@@ -13,8 +10,40 @@
         MemoryWriter = new DataView( MemoryBuffer );
     }
 
-    setTimeout( clearDocumentContent )
+    let createHTMLOperator = ( ref ) => {
+        HTMLOperator = new (class HTMLOperator {
+            constructor ( reference ) {
+                this.reference = reference
+                this.createORSelectBody( reference.body )
+                this.clearContents()
+            }
+
+            createORSelectBody ( body ) {
+                this.body = body ?? this.createElement( "body" )
+            } 
+
+            createElement ( tagName ) {
+                return this.reference.createElement( tagName )
+            }
+
+            clearContents () {
+                this.body.innerHTML = ""
+                setTimeout(() => {
+                    this.reference.head?.remove()
+                })
+            }
+
+        })( ref ?? global.document ?? new Document() )
+    }
+
+    //create memory for navigator
     createSharedMemory()
 
-    console.warn( DeviceMemory, MemoryBuffer, MemoryWriter )
+    //create document operator
+    createHTMLOperator()
+
+    console.log( HTMLOperator )
+
+    //debug
+    console.warn( DeviceMemory, MemoryBuffer, MemoryWriter, HTMLOperator )
 </script>
