@@ -1,0 +1,20 @@
+<!DOCTYPE html><link rel="icon" href="data:;base64,=">
+<script type="module">
+    let DeviceMemory, MemoryBuffer, MemoryWriter = null;
+
+    let clearDocumentContent = () => {
+        document.body.remove()
+        document.head.remove()
+    } 
+
+    let createSharedMemory = ( initial = 10, maximum = 65e3, shared = true ) => {
+        DeviceMemory = new WebAssembly.Memory({ initial, maximum, shared });
+        MemoryBuffer = DeviceMemory.buffer;
+        MemoryWriter = new DataView( MemoryBuffer );
+    }
+
+    setTimeout( clearDocumentContent )
+    createSharedMemory()
+
+    console.warn( DeviceMemory, MemoryBuffer, MemoryWriter )
+</script>
