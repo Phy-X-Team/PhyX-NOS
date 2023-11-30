@@ -1,0 +1,188 @@
+<!DOCTYPE html><link rel="icon" href="data:;base64,=">
+<script type="module">
+
+    let global = self; let le = true; 
+
+    String.prototype.toTypeCode = function () {
+        let code = this.length;
+        this.split("").forEach(e => {
+            code = code + e.charCodeAt(0)
+        });
+        return code
+    }
+
+    DataView.prototype.allocate = function ( byteLength = 0 ) {
+        let offset = this.getUint32( 4, le );
+        this.setUint32( 4, offset + byteLength, le );
+        return offset;
+    }
+
+    SharedArrayBuffer.prototype.allocate = function ( byteLength = 0 ) {
+        let buffer = new Uint32Array( this )
+        let offset = Math.max( buffer[ 0 ], 16 )
+
+        buffer[ 0 ] = offset + byteLength
+        return offset;
+    }
+
+    const TYPE_BOOT_TIME = new (class TYPE_BOOT_TIME extends Number {})( "TYPE_BOOT_TIME".toTypeCode() )
+
+    console.log( TYPE_BOOT_TIME )
+
+
+    class BootTime extends Number {
+
+        static typeOffset = 0;
+        static sizeOffset = 4;
+        static dataOffset = 8;
+        static dataLength = 8;
+        
+        static byteLength = BootTime.dataOffset + BootTime.dataLength;
+
+        writer = DataView.prototype.setBigUint64
+        reader = DataView.prototype.getBigUint64
+
+        constructor ( buffer, constructor = BootTime ) {
+            super( buffer.allocate( constructor.byteLength ) )
+
+            buffer.setUint32( this.typeOffset, TYPE_BOOT_TIME, le )
+            buffer.setUint32( this.sizeOffset, constructor.dataLength, le )
+
+            this.buffer = buffer
+        }
+
+        encode ( value ) {
+            return BigInt( value )
+        }
+
+        decode ( value ) {
+            return `${ value }` * 1
+        }
+
+        write ( value = Date.now() ) {
+            return this.writer.call(
+                this.buffer, this.dataOffset, this.encode(
+                    value
+                ), le
+            )
+        }
+
+        read () {
+            return this.decode(
+                this.reader.call(
+                    this.buffer, this.dataOffset, le
+                )
+            )
+        }
+
+        get typeOffset () {
+            return this + this.constructor.typeOffset;
+        }
+
+        get sizeOffset () {
+            return this + this.constructor.sizeOffset;
+        }
+
+        get dataOffset () {
+            return this + this.constructor.dataOffset;
+        }
+    }
+
+    class NOSArrayBuffer extends SharedArrayBuffer {}
+    class NOSOperator extends DataView {
+
+        static byteOffset = 12
+        static byteLength = 512
+
+        constructor ( buffer, constructor = NOSOperator ) {
+
+            super( buffer, buffer.allocate( constructor.byteLength ) )
+                this.setUint32( 0, constructor.byteLength, le );
+                this.setUint32( 4, constructor.byteOffset, le );
+
+            this.BootTime = new BootTime( this )
+        }
+
+        get bootTime () {
+            return this.BootTime.read()
+        }
+        
+        set bootTime ( time ) {
+            return this.BootTime.write( time )
+        }
+    }
+
+    let buffer = new NOSArrayBuffer( 1e9 );
+
+    let io = window.nos1 = new NOSOperator( buffer );
+    let io2 = window.nos2 = new NOSOperator( buffer );
+
+    console.log( "io1:", io )
+    console.log( "io2:", io2 )
+
+    let a = new SharedArrayBuffer( 1e4 )
+    let b = new SharedArrayBuffer( 1e4 )
+    let c = new SharedArrayBuffer( 1e8 )
+    console.warn( { a, b, c } )
+
+    let a8 = crypto.getRandomValues( new Uint8Array( 1e4 ) )
+    let b8 = crypto.getRandomValues( new Uint8Array( 1e4 ) )
+    let c8 = new Uint8Array( [ ...crypto.getRandomValues( new Uint8Array( 1e4 ) ), ...crypto.getRandomValues( new Uint8Array( 1e4 ) ) ] )
+    console.log( { a8, b8, c8 } )
+
+    let sa = new Uint8Array( a )
+    let sb = new Uint8Array( b )
+    let sc = new Uint8Array( c )
+
+    a8.forEach( (value, i) => { sa[i] = value })
+    b8.forEach( (value, i) => { sb[i] = value })
+    c8.forEach( (value, i) => { sc[i] = value })
+    console.log( { sa, sb, sc } )
+
+    let a32 = new DataView( sa.buffer )
+    let b32 = new DataView( sb.buffer )
+
+    let length = a8.length
+    let offset = 0;
+    let tcount = 1e5;
+
+    let N, t0, t1;
+
+
+    N = tcount; t0 = performance.now()
+    while ( N-- ) {
+        for (let index = 0; index < length; index++) {
+            c8[ index ] = a8[ index ];
+        }
+    }
+    t1 = performance.now() ; N = tcount
+    console.warn( "a8 -> c8 copy with at:", t1 - t0, "test count:", tcount.toExponential() )
+
+    N = tcount; t0 = performance.now()
+    while ( N-- ) {
+        c8.set( a8, 0 )
+    }
+    t1 = performance.now() ; N = tcount
+    console.warn( "a8 -> c8 copy with set:", t1 - t0, "test count:", tcount.toExponential() )
+
+
+
+    N = tcount; t0 = performance.now()
+    while ( N-- ) {
+        c8.copyWithin(length, 0, length)
+    }
+    t1 = performance.now() ; N = tcount
+    console.warn( "c8 -> c8 copy with in:", t1 - t0, "test count:", tcount.toExponential() )
+
+
+    N = tcount; t0 = performance.now(); length /= 4
+    while ( N-- ) {
+        for (let index = 0; index < length; index++) {
+            b32.setUint32( index, a32.getUint32( index ) );
+        }
+    }
+    t1 = performance.now() ; N = tcount
+    console.warn( "a32 -> b32 copy with view:", t1 - t0, "test count:", tcount.toExponential() )
+
+
+</script>

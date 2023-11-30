@@ -1,49 +1,282 @@
 <!DOCTYPE html><link rel="icon" href="data:;base64,=">
 <script type="module">
-    let global = self,
-        DeviceMemory, MemoryBuffer, MemoryWriter,
-        HTMLOperator;
 
-    let createSharedMemory = ( initial = 10, maximum = 65e3, shared = true ) => {
-        DeviceMemory = new WebAssembly.Memory({ initial, maximum, shared });
-        MemoryBuffer = DeviceMemory.buffer;
-        MemoryWriter = new DataView( MemoryBuffer );
+    let global = self; let le = true; 
+
+
+    DataView.prototype.allocate = function ( byteLength = 0 ) {
+        let offset = this.getUint32( 4, le );
+        this.setUint32( 4, offset + byteLength, le );
+        return offset;
     }
 
-    let createHTMLOperator = ( ref ) => {
-        HTMLOperator = new (class HTMLOperator {
-            constructor ( reference ) {
-                this.reference = reference
-                this.createORSelectBody( reference.body )
-                this.clearContents()
-            }
+    SharedArrayBuffer.prototype.allocate = function ( byteLength = 0 ) {
+        let buffer = new Uint32Array( this )
+        let offset = Math.max( buffer[ 0 ], 16 )
 
-            createORSelectBody ( body ) {
-                this.body = body ?? this.createElement( "body" )
-            } 
-
-            createElement ( tagName ) {
-                return this.reference.createElement( tagName )
-            }
-
-            clearContents () {
-                this.body.innerHTML = ""
-                setTimeout(() => {
-                    this.reference.head?.remove()
-                })
-            }
-
-        })( ref ?? global.document ?? new Document() )
+        buffer[ 0 ] = offset + byteLength
+        return offset;
     }
 
-    //create memory for navigator
-    createSharedMemory()
+    class TYPE extends Number {
 
-    //create document operator
-    createHTMLOperator()
+        static proto = new Object({ TYPE })
+        
+        static define ( type, _super = this ) {
 
-    console.log( HTMLOperator )
+            if ( this[ type ] ) {
+                return this[ type ];
+            }
 
-    //debug
-    console.warn( DeviceMemory, MemoryBuffer, MemoryWriter, HTMLOperator )
+            let code = type.length;
+            let kind = _super.name;
+
+            type.split("").forEach(e => {
+                code = code + e.charCodeAt(0)
+            });
+
+            if(!TYPE.proto[ kind ]) {
+                TYPE.proto[ kind ] = eval(
+                    `(class ${kind} extends TYPE {})`
+                )
+            }
+
+            TYPE.proto[ type ] = eval(
+                `(class ${type} extends TYPE.proto.${kind} {})`
+            )
+
+            let _class = new (TYPE.proto[ type ])( code )
+            
+            Object.defineProperties(  TYPE, {
+                [ type ] : { value : _class, configurable: true },
+                [ code ] : { value : _class, configurable: true }
+            });
+
+
+            return _class
+        }
+
+        valueOf () { return `${this}` * 1; }
+
+        define ( type, _super = this.constructor ) {
+            return TYPE.define( type, _super )
+        }
+
+        get name () { return this.type.name; }
+        get code () { return this.valueOf(); }
+        get type () { return this.constructor; }
+        
+        static modifier = ( e => {
+
+            Object.defineProperty( Number.prototype, "typedNumber", {
+                value () {
+                    if ( this instanceof e ) { return this; }
+                    else { return e[ `${this}` ] }                    
+                }
+            })
+
+            Object.defineProperty( String.prototype, "typedString", {
+                value ( _super = e ) { return _super.define( this ) }
+            })
+
+            delete TYPE.modifier;
+            
+        })( TYPE ) 
+
+        sub ( type ) {
+            delete TYPE[ this.name ]
+            delete TYPE[ this.code ]
+
+            return TYPE.of[ type ].constructor.of[ this.name ]
+        }
+
+        static get of () {
+            return new Proxy( this, { get ( constructor, key ) {
+                return TYPE.define( key, constructor )
+            }})
+        }
+    }
+
+    class ERROR extends TYPE {}
+
+
+    class BootTime extends Number {
+
+        static typeOffset = 0;
+        static sizeOffset = 4;
+        static dataOffset = 8;
+        static dataLength = 8;
+        
+        static byteLength = BootTime.dataOffset + BootTime.dataLength;
+
+        writer = DataView.prototype.setBigUint64
+        reader = DataView.prototype.getBigUint64
+
+        constructor ( buffer, _super = BootTime ) {
+            super( buffer.allocate( _super.byteLength ) )
+
+            buffer.setUint32( this.typeOffset, TYPE.of.BOOT_TIME, le )
+            buffer.setUint32( this.sizeOffset, _super.dataLength, le )
+
+            this.buffer = buffer
+        }
+
+        encode ( value ) {
+            return BigInt( value )
+        }
+
+        decode ( value ) {
+            return `${ value }` * 1
+        }
+
+        write ( value = Date.now() ) {
+            return this.writer.call(
+                this.buffer, this.dataOffset, this.encode(
+                    value
+                ), le
+            )
+        }
+
+        read () {
+            return this.decode(
+                this.reader.call(
+                    this.buffer, this.dataOffset, le
+                )
+            )
+        }
+
+        get typeOffset () {
+            return this + this.constructor.typeOffset;
+        }
+
+        get sizeOffset () {
+            return this + this.constructor.sizeOffset;
+        }
+
+        get dataOffset () {
+            return this + this.constructor.dataOffset;
+        }
+    }
+
+    class DeviceBuffer extends SharedArrayBuffer {}
+
+
+    class Operator extends EventTarget {
+
+        self = window ?? self; 
+        
+        static Date = self.Date;
+        static BigInt = self.BigInt;
+        static Number = self.Number;
+        static parseFloat = self.parseFloat;
+
+        constructor ( source ) {
+            super().global = source;
+        }
+
+        encodeUnixtime ( time ) {            
+            return Operator.BigInt.call( this.self, time );
+        }
+
+        decodeUnixtime ( time ) {            
+            return Operator.Number.call( this.self, `${time}` );
+        }
+
+        recodeUnixtime ( time, Object = this.Date ) {
+            return new Object( time );
+        }
+    }
+
+
+    class DeviceOperator extends Operator {
+
+        constructor ( global, buffer ) {
+            super( global )
+                .memory = new BufferOperator( buffer )
+        }
+
+        get time () {
+            return new Operator.Date().getTime()
+        }
+        
+        set time ( time ) {
+            throw ERROR.of.LOCAL_DEVICE_TIME_UNABLE_TO_SET
+        }
+
+        setTime ( time = this.time ) {
+            this.memory.time =
+                this.encodeUnixtime( time )
+
+            return this
+        }
+
+        getTime () {
+            return this.decodeUnixtime(
+                this.memory.time
+            )
+        }
+    }
+
+    class BufferOperator extends DataView {
+
+        constructor ( buffer ) {
+            new OffsetOperator( super( buffer ) )
+        }
+
+        get time () {
+            return this.getBigUint64( this.OFFSET_VALUE_TIME )
+        }
+
+        set time ( bigUint64 ) {
+            return this.setBigUint64( this.OFFSET_VALUE_TIME, bigUint64 )
+        }
+    }
+
+
+    class LocalDevice extends DeviceOperator {
+        constructor ( global = window ) {
+            super( global, new DeviceBuffer( 1e9 ) )
+        }
+    }
+
+    class ProxyDevice extends LocalDevice {
+        constructor ( buffer ) {
+            super( new Proxy( ProxyDevice, {
+                get ( operator, key, proxy ) {
+                    console.warn("proxy request", key)
+                }
+            }), buffer )
+        }
+    }
+
+    class OffsetOperator {
+        byteLength = 16
+
+        constructor ( buffer ) {
+            buffer.OFFSET_TYPE_TIME = this.alloc(4) 
+            buffer.OFFSET_VALUE_TIME = this.alloc(8) 
+            buffer.OFFSET_BUFFER_TIME = this.alloc(12)
+
+            buffer.BUFFER_LOCATION = this.alloc(8)
+        }
+
+        alloc ( byteLength, offset = this.byteLength ) {
+            this.byteLength += byteLength ; return offset;
+        }
+    }
+
+
+
+    self.nullBuf = new DeviceBuffer( 1e9 );
+    self.operator = new LocalDevice( window );
+    self.operator2 = new ProxyDevice( nullBuf );
+
+
+    
+    console.log( operator.time )
+    console.warn( operator )
+    console.warn( operator2 )
+
+
+
 </script>
